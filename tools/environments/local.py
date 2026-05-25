@@ -522,6 +522,12 @@ class LocalEnvironment(BaseEnvironment):
 
         _popen_kwargs = {"creationflags": windows_hide_flags()} if _IS_WINDOWS else {}
 
+        try:
+            from agent.sandbox import wrap_in_sandbox
+            args = wrap_in_sandbox(args, env=run_env, cwd=_popen_cwd)
+        except Exception:
+            pass
+
         proc = subprocess.Popen(
             args,
             text=True,

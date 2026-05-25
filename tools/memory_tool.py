@@ -30,9 +30,10 @@ import re
 import tempfile
 import time
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from hermes_constants import get_hermes_home
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
 
 from utils import atomic_replace
 
@@ -58,6 +59,37 @@ def get_memory_dir() -> Path:
     return get_hermes_home() / "memories"
 
 ENTRY_DELIMITER = "\n§\n"
+
+# Staleness threshold: entries older than this many days get flagged in the
+# system prompt with [STALE — written N days ago, verify before citing].
+MEMORY_STALE_DAYS = int(os.getenv("HERMES_MEMORY_STALE_DAYS", "30"))
+
+# Regex to parse the written_at prefix prepended to new entries.
+_WRITTEN_AT_RE = re.compile(
+    r"^\[written: (\d{4}-\d{2}-\d{2}T[^\]]+)\]\n", re.MULTILINE
+)
+
+
+def _now_iso() -> str:
+    """Return the current UTC time as an ISO 8601 string."""
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _parse_written_at(entry: str) -> Tuple[str, Optional[datetime]]:
+    """Strip written_at prefix from entry and parse the timestamp.
+
+    Returns (content_without_prefix, datetime_or_None).
+    """
+    m = _WRITTEN_AT_RE.match(entry)
+    if not m:
+        return entry, None
+    try:
+        ts = datetime.fromisoformat(m.group(1))
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+    except ValueError:
+        return entry, None
+    return entry[m.end():], ts
 
 
 # ---------------------------------------------------------------------------
@@ -166,10 +198,12 @@ class MemoryStore:
         self.memory_entries = list(dict.fromkeys(self.memory_entries))
         self.user_entries = list(dict.fromkeys(self.user_entries))
 
-        # Capture frozen snapshot for system prompt injection
+        # Capture frozen snapshot for system prompt injection (both full and index)
         self._system_prompt_snapshot = {
             "memory": self._render_block("memory", self.memory_entries),
             "user": self._render_block("user", self.user_entries),
+            "memory_index": self._render_index_block("memory", self.memory_entries),
+            "user_index": self._render_index_block("user", self.user_entries),
         }
 
     @staticmethod
@@ -272,6 +306,10 @@ class MemoryStore:
         if scan_error:
             return {"success": False, "error": scan_error}
 
+        # Prepend a written_at timestamp so stale entries can be flagged in
+        # the system prompt without fetching external time services.
+        stamped_content = f"[written: {_now_iso()}]\n{content}"
+
         with self._file_lock(self._path_for(target)):
             # Re-read from disk under lock to pick up writes from other sessions.
             # If external drift was detected, the file was backed up to .bak.<ts>
@@ -284,12 +322,14 @@ class MemoryStore:
             entries = self._entries_for(target)
             limit = self._char_limit(target)
 
-            # Reject exact duplicates
-            if content in entries:
+            # Reject exact duplicates — compare content without timestamp prefix
+            # so a re-add after a replace still deduplicates correctly.
+            existing_contents = [_parse_written_at(e)[0] for e in entries]
+            if content in existing_contents:
                 return self._success_response(target, "Entry already exists (no duplicate added).")
 
             # Calculate what the new total would be
-            new_entries = entries + [content]
+            new_entries = entries + [stamped_content]
             new_total = len(ENTRY_DELIMITER.join(new_entries))
 
             if new_total > limit:
@@ -305,7 +345,7 @@ class MemoryStore:
                     "usage": f"{current:,}/{limit:,}",
                 }
 
-            entries.append(content)
+            entries.append(stamped_content)
             self._set_entries(target, entries)
             self.save_to_disk(target)
 
@@ -420,6 +460,48 @@ class MemoryStore:
         block = self._system_prompt_snapshot.get(target, "")
         return block if block else None
 
+    def format_index_for_system_prompt(self, target: str) -> Optional[str]:
+        """Return a compact index of memory entries for the volatile system prompt tier.
+
+        One line per entry (first 150 chars of content, stale entries flagged).
+        Full entries are available via memory(action='read').  Reduces volatile
+        tier token usage by ~70% compared to injecting full entry text.
+        """
+        snapshot_key = f"{target}_index"
+        block = self._system_prompt_snapshot.get(snapshot_key, "")
+        return block if block else None
+
+    def _render_index_block(self, target: str, entries: List[str]) -> str:
+        """Render a one-line-per-entry index for the volatile system prompt tier."""
+        if not entries:
+            return ""
+
+        limit = self._char_limit(target)
+        now = datetime.now(timezone.utc)
+        lines = []
+        for i, entry in enumerate(entries, 1):
+            content, written_at = _parse_written_at(entry)
+            first_line = content.split("\n")[0][:150]
+            if written_at is not None:
+                days_old = (now - written_at).days
+                if days_old > MEMORY_STALE_DAYS:
+                    lines.append(f"{i}. [STALE — {days_old}d] {first_line}")
+                else:
+                    lines.append(f"{i}. {first_line}")
+            else:
+                lines.append(f"{i}. {first_line}")
+
+        current = self._char_count(target)
+        pct = min(100, int((current / limit) * 100)) if limit > 0 else 0
+
+        if target == "user":
+            header = f"USER PROFILE INDEX [{pct}% — {len(entries)} entries; use memory(action='read') for full text]"
+        else:
+            header = f"MEMORY INDEX [{pct}% — {len(entries)} entries; use memory(action='read') for full text]"
+
+        separator = "─" * 46
+        return f"{separator}\n{header}\n{separator}\n" + "\n".join(lines)
+
     # -- Internal helpers --
 
     def _success_response(self, target: str, message: str = None) -> Dict[str, Any]:
@@ -440,13 +522,28 @@ class MemoryStore:
         return resp
 
     def _render_block(self, target: str, entries: List[str]) -> str:
-        """Render a system prompt block with header and usage indicator."""
+        """Render a system prompt block with header, usage indicator, and stale flags."""
         if not entries:
             return ""
 
         limit = self._char_limit(target)
-        content = ENTRY_DELIMITER.join(entries)
-        current = len(content)
+        now = datetime.now(timezone.utc)
+        rendered_entries = []
+        for entry in entries:
+            content, written_at = _parse_written_at(entry)
+            if written_at is not None:
+                days_old = (now - written_at).days
+                if days_old > MEMORY_STALE_DAYS:
+                    rendered_entries.append(
+                        f"[STALE — written {days_old} days ago, verify before citing]\n{content}"
+                    )
+                else:
+                    rendered_entries.append(content)
+            else:
+                rendered_entries.append(entry)
+
+        raw_content = ENTRY_DELIMITER.join(entries)
+        current = len(raw_content)
         pct = min(100, int((current / limit) * 100)) if limit > 0 else 0
 
         if target == "user":
@@ -455,7 +552,8 @@ class MemoryStore:
             header = f"MEMORY (your personal notes) [{pct}% — {current:,}/{limit:,} chars]"
 
         separator = "═" * 46
-        return f"{separator}\n{header}\n{separator}\n{content}"
+        display_content = ENTRY_DELIMITER.join(rendered_entries)
+        return f"{separator}\n{header}\n{separator}\n{display_content}"
 
     @staticmethod
     def _read_file(path: Path) -> List[str]:

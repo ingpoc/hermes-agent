@@ -436,3 +436,30 @@ OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 OPENROUTER_MODELS_URL = f"{OPENROUTER_BASE_URL}/models"
 
 AI_GATEWAY_BASE_URL = "https://ai-gateway.vercel.sh/v1"
+
+# ─── Sandbox & Audit Constants ────────────────────────────────────────────────
+
+# Set HERMES_SANDBOX_NETWORK_DISABLED=1 to block outbound network from shell
+# tools when OS-level sandboxing is active.
+SANDBOX_NETWORK_DISABLED: bool = os.getenv("HERMES_SANDBOX_NETWORK_DISABLED", "0") == "1"
+
+# Set HERMES_SANDBOX_DISABLED=1 to bypass the OS sandbox wrapper entirely
+# (e.g. in CI environments where bwrap/sandbox-exec is unavailable).
+SANDBOX_DISABLED: bool = os.getenv("HERMES_SANDBOX_DISABLED", "0") == "1"
+
+# Comma-separated tool names that are permitted to execute.
+# Empty (default) = all tools allowed. Set HERMES_ALLOWED_TOOLS=terminal,read_file
+# to restrict execution to only those tools.
+ALLOWED_TOOLS: frozenset[str] = frozenset(
+    t.strip() for t in os.getenv("HERMES_ALLOWED_TOOLS", "").split(",") if t.strip()
+)
+
+
+def get_audit_log_path() -> Path:
+    """Return the path to the per-call tool audit log under HERMES_HOME."""
+    return get_hermes_home() / "audit.jsonl"
+
+
+def get_compaction_log_path() -> Path:
+    """Return the path to the compaction analytics log under HERMES_HOME."""
+    return get_hermes_home() / "compaction.jsonl"

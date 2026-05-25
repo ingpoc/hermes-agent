@@ -55,6 +55,30 @@ logger = logging.getLogger(__name__)
 # Mirrors the constant in ``run_agent`` for tests/imports that look here.
 _MAX_TOOL_WORKERS = 8
 
+# Maximum token-equivalent chars to pass to the model for a single tool
+# result. Oversized results get a trailing truncation notice with a hint
+# to use search tools for specific content. Set to 0 to disable.
+_MAX_TOOL_OUTPUT_CHARS = int(os.getenv("HERMES_MAX_TOOL_OUTPUT_TOKENS", "4000")) * 4
+
+
+def _truncate_tool_output(result: str, tool_name: str) -> str:
+    """Truncate oversized string tool results and append a retrieval hint.
+
+    Only operates on plain string results — multimodal dicts pass through
+    unchanged (callers must check with ``_is_multimodal_tool_result`` first).
+    """
+    if _MAX_TOOL_OUTPUT_CHARS <= 0 or len(result) <= _MAX_TOOL_OUTPUT_CHARS:
+        return result
+    truncated = result[:_MAX_TOOL_OUTPUT_CHARS]
+    total_chars = len(result)
+    return (
+        truncated
+        + f"\n\n[Output truncated at {_MAX_TOOL_OUTPUT_CHARS:,} chars "
+        f"(full output is {total_chars:,} chars). "
+        f"Use search tools (search_files, session_search, docs_search) "
+        f"to locate specific content.]"
+    )
+
 
 def _ra():
     """Lazy reference to ``run_agent`` so patches like ``run_agent._set_interrupt`` work."""
@@ -434,6 +458,10 @@ def execute_tool_calls_concurrent(agent, assistant_message, messages: list, effe
                 _append_subdir_hint_to_multimodal(function_result, subdir_hints)
             else:
                 function_result += subdir_hints
+
+        # Truncate oversized string results before injecting into messages.
+        if isinstance(function_result, str):
+            function_result = _truncate_tool_output(function_result, name)
 
         # Unwrap _multimodal dicts to an OpenAI-style content list so any
         # vision-capable provider receives [{type:text},{type:image_url}]
@@ -856,6 +884,10 @@ def execute_tool_calls_sequential(agent, assistant_message, messages: list, effe
                 _append_subdir_hint_to_multimodal(function_result, subdir_hints)
             else:
                 function_result += subdir_hints
+
+        # Truncate oversized string results before injecting into messages.
+        if isinstance(function_result, str):
+            function_result = _truncate_tool_output(function_result, function_name)
 
         # Unwrap _multimodal dicts to an OpenAI-style content list
         # (see parallel path for rationale). String results pass through.

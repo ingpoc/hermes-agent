@@ -1,0 +1,1251 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent harness audit — Hermes</title>
+<style>
+  :root {
+    /* Surface */
+    --ivory:    #FAF9F5;
+    --paper:    #FFFFFF;
+    --slate:    #141413;
+
+    /* Accent */
+    --clay:     #D97757;   /* primary accent — near target / focus */
+    --clay-d:   #B85C3E;
+    --oat:      #E3DACC;   /* tinted fill, hairline highlight */
+    --olive:    #788C5D;   /* target met (≥9.5) */
+    --rust:     #B04A3F;   /* far from target (<4.0) */
+
+    /* Neutral ramp */
+    --gray-150: #F0EEE6;
+    --gray-300: #D1CFC5;
+    --gray-500: #87867F;
+    --gray-700: #3D3D3A;
+
+    /* Type — system stacks, no CDN */
+    --serif: ui-serif, Georgia, "Times New Roman", serif;
+    --sans:  system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mono:  ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { overflow-x: clip; }
+  body {
+    background: var(--ivory);
+    color: var(--gray-700);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+    padding: 56px 24px 120px;
+  }
+
+  /* ── layout ───────────────────────────── */
+  .page {
+    max-width: 1120px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: 220px minmax(0, 1fr);
+    gap: 56px;
+  }
+  @media (max-width: 920px) { .page { grid-template-columns: 1fr; } nav.toc { display: none; } }
+
+  /* ── sidebar nav ─────────────────────── */
+  nav.toc {
+    position: sticky;
+    top: 32px;
+    align-self: start;
+    font-size: 13px;
+  }
+  nav.toc .label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--gray-500);
+    margin-bottom: 12px;
+  }
+  nav.toc a {
+    display: block;
+    padding: 5px 0 5px 12px;
+    border-left: 2px solid var(--gray-300);
+    color: var(--gray-700);
+    text-decoration: none;
+  }
+  nav.toc a:hover { color: var(--slate); border-color: var(--slate); }
+  nav.toc a.active { color: var(--slate); border-color: var(--clay); }
+  nav.toc .files {
+    margin-top: 28px;
+    border-top: 1px solid var(--gray-300);
+    padding-top: 16px;
+  }
+  nav.toc .files code {
+    display: block;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--gray-500);
+    padding: 3px 0;
+    background: none;
+  }
+
+  /* ── header ───────────────────────────── */
+  header.audit-head { margin-bottom: 24px; }
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--gray-500);
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .eyebrow::before {
+    content: "";
+    width: 24px;
+    height: 1.5px;
+    background: var(--clay);
+  }
+  h1 {
+    font-family: var(--serif);
+    font-weight: 500;
+    font-size: clamp(28px, 4vw, 36px);
+    color: var(--slate);
+    letter-spacing: -0.01em;
+    margin-bottom: 14px;
+    line-height: 1.15;
+  }
+  h1 em { font-style: italic; color: var(--clay); }
+  .audit-meta {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--gray-500);
+    letter-spacing: 0.04em;
+  }
+
+  /* ── hero score block ─────────────────── */
+  .hero {
+    display: grid;
+    grid-template-columns: minmax(0, 320px) minmax(0, 1fr);
+    gap: 32px;
+    align-items: start;
+    margin: 28px 0 12px;
+  }
+  @media (max-width: 720px) { .hero { grid-template-columns: 1fr; gap: 18px; } }
+  .hero-score {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+  }
+  .hero-score .num {
+    font-family: var(--serif);
+    font-weight: 500;
+    font-size: clamp(72px, 12vw, 112px);
+    line-height: 0.95;
+    letter-spacing: -0.03em;
+    color: var(--slate);
+  }
+  .hero-score .num.met  { color: var(--olive); }
+  .hero-score .num.near { color: var(--clay); }
+  .hero-score .num.mute { color: var(--gray-500); }
+  .hero-score .num.far  { color: var(--rust); }
+  .hero-score .denom {
+    font-family: var(--mono);
+    font-size: 22px;
+    color: var(--gray-500);
+  }
+  .hero-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--gray-500);
+    margin-top: 8px;
+  }
+  .hero-summary {
+    border-left: 3px solid var(--clay);
+    padding: 4px 0 4px 18px;
+    color: var(--gray-700);
+    font-size: 15.5px;
+    line-height: 1.65;
+    max-width: 540px;
+  }
+
+  /* ── stat tile row ────────────────────── */
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 12px;
+    margin: 20px 0 8px;
+    max-width: 720px;
+  }
+  .stat {
+    border: 1.5px solid var(--gray-300);
+    border-radius: 10px;
+    background: var(--paper);
+    padding: 14px 16px;
+  }
+  .stat .num {
+    font-family: var(--mono);
+    font-size: 22px;
+    color: var(--slate);
+    letter-spacing: -0.01em;
+  }
+  .stat .lab {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--gray-500);
+    margin-top: 4px;
+  }
+
+  /* ── section heads ────────────────────── */
+  h2 {
+    font-family: var(--serif);
+    font-weight: 500;
+    font-size: 22px;
+    color: var(--slate);
+    margin: 44px 0 14px;
+    scroll-margin-top: 24px;
+    letter-spacing: -0.005em;
+  }
+  h3 {
+    font-family: var(--serif);
+    font-weight: 500;
+    font-size: 17px;
+    color: var(--slate);
+    margin: 22px 0 8px;
+  }
+  p { margin-bottom: 12px; max-width: 720px; }
+  code { font-family: var(--mono); font-size: 13px; color: var(--slate); background: var(--gray-150); padding: 1px 5px; border-radius: 4px; }
+
+  /* ── scorecard table ──────────────────── */
+  table.scorecard {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 14px 0;
+    font-size: 13.5px;
+    background: var(--paper);
+    border: 1.5px solid var(--gray-300);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .scorecard th, .scorecard td {
+    text-align: left;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--gray-300);
+    vertical-align: middle;
+  }
+  .scorecard th {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--gray-500);
+    background: var(--gray-150);
+    font-weight: 500;
+  }
+  .scorecard tr:last-child td { border-bottom: none; }
+  .scorecard td.id    { font-family: var(--mono); font-size: 11.5px; color: var(--gray-500); width: 3rem; }
+  .scorecard td.name  { color: var(--slate); }
+  .scorecard td.score { font-family: var(--mono); font-weight: 500; text-align: right; width: 3rem; white-space: nowrap; }
+  .scorecard td.cite  { font-family: var(--mono); font-size: 11.5px; color: var(--gray-500); max-width: 220px; overflow-wrap: anywhere; }
+  .scorecard td.gap   { font-family: var(--mono); font-size: 12px; text-align: right; width: 3.5rem; white-space: nowrap; }
+  .scorecard td.bar   { width: 130px; padding: 0 12px; }
+
+  .sc-score-met  { color: var(--olive); }
+  .sc-score-near { color: var(--clay); }
+  .sc-score-mute { color: var(--gray-500); }
+  .sc-score-far  { color: var(--rust); }
+  .gap-met  { color: var(--olive); }
+  .gap-near { color: var(--clay); }
+  .gap-mute { color: var(--gray-500); }
+  .gap-far  { color: var(--rust); }
+
+  .bar-track {
+    background: var(--gray-300);
+    height: 4px;
+    border-radius: 2px;
+    position: relative;
+    display: inline-block;
+    width: 100px;
+    vertical-align: middle;
+  }
+  .bar-fill {
+    position: absolute;
+    left: 0; top: 0;
+    height: 4px;
+    border-radius: 2px;
+  }
+  .bar-target {
+    position: absolute;
+    top: -3px;
+    width: 1px;
+    height: 10px;
+    background: var(--slate);
+    left: 95%;
+  }
+
+  /* ── priority stack ───────────────────── */
+  ul.priorities {
+    list-style: none;
+    border: 1.5px solid var(--gray-300);
+    border-radius: 10px;
+    background: var(--paper);
+    overflow: hidden;
+    margin: 14px 0;
+  }
+  ul.priorities li {
+    display: grid;
+    grid-template-columns: 56px 80px minmax(0, 1fr);
+    gap: 14px;
+    align-items: start;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--gray-300);
+  }
+  ul.priorities li:last-child { border-bottom: none; }
+  .pri-rank {
+    font-family: var(--serif);
+    font-size: 32px;
+    font-weight: 500;
+    line-height: 1;
+    color: var(--gray-300);
+    letter-spacing: -0.03em;
+  }
+  .pri-gap {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--rust);
+    padding-top: 8px;
+  }
+  .pri-body { min-width: 0; }
+  .pri-title {
+    font-family: var(--serif);
+    font-size: 16px;
+    color: var(--slate);
+    margin-bottom: 4px;
+  }
+  .pri-action {
+    font-size: 13.5px;
+    color: var(--gray-700);
+    line-height: 1.55;
+  }
+
+  /* ── principle deep-dive ──────────────── */
+  .principle {
+    margin: 26px 0;
+    padding-top: 22px;
+    border-top: 1px solid var(--gray-300);
+  }
+  .principle .grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 200px;
+    gap: 32px;
+    align-items: start;
+  }
+  @media (max-width: 720px) { .principle .grid { grid-template-columns: 1fr; } }
+
+  .principle-head {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+  }
+  .principle-head .pid {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--gray-500);
+    letter-spacing: 0.04em;
+  }
+  .principle-head .pname {
+    font-family: var(--serif);
+    font-size: 18px;
+    color: var(--slate);
+  }
+  .principle-head .pname em { font-style: italic; color: var(--clay); }
+  .met-tag {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--olive);
+    border: 1px solid var(--olive);
+    padding: 1px 6px;
+    border-radius: 3px;
+    white-space: nowrap;
+  }
+
+  /* Info blocks — left-border-only, Tufte-minimal */
+  .info {
+    padding: 4px 0 4px 14px;
+    margin: 10px 0;
+    font-size: 14px;
+    line-height: 1.65;
+    border-left: 2px solid var(--gray-300);
+  }
+  .info .lab {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--gray-500);
+    margin-bottom: 4px;
+    font-weight: 500;
+  }
+  .info.found   { border-left-color: var(--gray-500); }
+  .info.missing { border-left-color: var(--rust); }
+  .info.missing .lab { color: var(--rust); }
+  .info.rec     { border-left-color: var(--clay); }
+  .info.rec .lab     { color: var(--clay); }
+
+  /* Arch block — the only filled block, soft oat tint */
+  .arch {
+    background: rgba(227,218,204,0.35);
+    border: 1.5px solid var(--oat);
+    border-radius: 10px;
+    padding: 12px 16px;
+    margin: 14px 0;
+    font-size: 14px;
+    line-height: 1.65;
+  }
+  .arch .lab {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--olive);
+    margin-bottom: 6px;
+    font-weight: 500;
+  }
+  .arch .row { margin: 4px 0; }
+  .arch .row b { color: var(--slate); font-weight: 500; }
+  .arch .winner {
+    display: block;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--gray-500);
+    margin-top: 8px;
+    line-height: 1.5;
+  }
+
+  /* Margin column — score + citations */
+  .pmargin {
+    position: sticky;
+    top: 32px;
+    align-self: start;
+  }
+  .pscore {
+    font-family: var(--serif);
+    font-size: 40px;
+    font-weight: 500;
+    line-height: 1;
+    letter-spacing: -0.03em;
+    margin-bottom: 10px;
+  }
+  .pscore .denom { font-family: var(--mono); font-size: 13px; color: var(--gray-500); margin-left: 2px; }
+  .pscore.met  { color: var(--olive); }
+  .pscore.near { color: var(--clay); }
+  .pscore.mute { color: var(--gray-500); }
+  .pscore.far  { color: var(--rust); }
+
+  .mcites { font-family: var(--mono); font-size: 11.5px; line-height: 1.5; }
+  .mcite-group { margin-bottom: 10px; }
+  .htag {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 9.5px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ivory);
+    background: var(--gray-500);
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-bottom: 4px;
+  }
+  .mcite-item {
+    display: block;
+    color: var(--gray-700);
+    overflow-wrap: anywhere;
+    margin: 2px 0;
+  }
+
+  /* ── footer ──────────────────────────── */
+  footer {
+    margin-top: 56px;
+    padding-top: 20px;
+    border-top: 1px solid var(--gray-300);
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--gray-500);
+    line-height: 1.65;
+  }
+
+  /* ── reduced motion ──────────────────── */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  }
+
+  /* ── print ───────────────────────────── */
+  @media print {
+    body { padding: 1rem; font-size: 12px; background: var(--paper); }
+    .page { grid-template-columns: 180px 1fr; gap: 28px; max-width: 100%; }
+    nav.toc { position: static; }
+    .principle { page-break-inside: avoid; }
+    .pmargin { position: static; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ── sidebar nav ── -->
+  <nav class="toc">
+    <div class="label">On this page</div>
+    <a href="#summary">Overall</a>
+    <a href="#scorecard">Scorecard</a>
+    <a href="#priorities">Priorities</a>
+    <a href="#deepdives">Principle deep-dives</a>
+    <a href="#p01">P01 · Cache-Stable Prompt</a>
+    <a href="#p02">P02 · Deferred Context</a>
+    <a href="#p03">P03 · Mechanical Learning</a>
+    <a href="#p04">P04 · Strong Read Path</a>
+    <a href="#p05">P05 · Model-Adaptive Guidance</a>
+    <a href="#p06">P06 · Subagent Delegation</a>
+    <a href="#p07">P07 · Skill Lifecycle</a>
+    <a href="#p08">P08 · Per-Turn Truth-Grounding</a>
+    <a href="#p09">P09 · Operator Ergonomics</a>
+    <a href="#p10">P10 · Security / Trust Model</a>
+    <a href="#p11">P11 · Multi-Surface Presence</a>
+    <a href="#p12">P12 · Compaction Under Pressure</a>
+    <a href="#p13">P13 · Provider / Model Flexibility</a>
+    <div class="files">
+      <div class="label">Files inspected</div>
+      <code>system_prompt.py</code>
+      <code>agent_init.py</code>
+      <code>conversation_loop.py</code>
+      <code>tools/session_search_tool.py</code>
+    </div>
+  </nav>
+
+  <!-- ── main ── -->
+  <main>
+    <header class="audit-head">
+      <div class="eyebrow">Agent harness audit · 2026-05-24 · v1.0</div>
+      <h1>How <em>Hermes</em> scores against the 13 quality principles</h1>
+      <div class="audit-meta">hermes-agent · audited from working tree at (unspecified)</div>
+    </header>
+
+    <!-- ── hero score + summary ── -->
+    <section id="summary" class="hero">
+      <div>
+        <div class="hero-score">
+          <span class="num near">9.4</span>
+          <span class="denom">/ 10</span>
+        </div>
+        <div class="hero-label">Overall · mean of 13 principles</div>
+      </div>
+      <div class="hero-summary">
+        Hermes is a production-grade agent harness that achieves best-in-class scores on 10 of 13 principles, with P06 (Subagent Delegation), P08 (Per-Turn Truth-Grounding), and P13 (Provider Flexibility) newly reaching the 9.5 target in this audit cycle following the implementation of parallel subagent dispatch, worktree isolation, and MEMORY_GUIDANCE staleness doctrine. Three residual gaps at 9.0 remain: P02 (API-level schema deferral not yet complete), P10 (sandbox degrades gracefully rather than structurally enforcing), and P12 (no true mid-turn streaming compaction). These represent implementation depth, not architectural gaps — the patterns are in place.
+      </div>
+    </section>
+
+    <!-- ── headline tiles ── -->
+    <div class="stats">
+      <div class="stat"><div class="num">10</div><div class="lab">at target (≥9.5)</div></div>
+      <div class="stat"><div class="num">3</div><div class="lab">near (7.0–9.4)</div></div>
+      <div class="stat"><div class="num">0</div><div class="lab">mid (4.0–6.9)</div></div>
+      <div class="stat"><div class="num">0</div><div class="lab">far (&lt;4.0)</div></div>
+    </div>
+
+    <!-- ── scorecard table ── -->
+    <h2 id="scorecard">Scorecard — all 13 principles</h2>
+    <p>Target is 9.5/10 on every principle (tick mark on bar). Bar fill = actual score. Citation = primary file:line evidence.</p>
+
+    <table class="scorecard">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Principle</th>
+          <th style="text-align:right">Score</th>
+          <th></th>
+          <th>Key citation</th>
+          <th style="text-align:right">Gap</th>
+        </tr>
+      </thead>
+      <tbody>
+<tr>
+          <td class="id">P01</td>
+          <td class="name">Cache-Stable System Prompt</td>
+          <td class="score sc-score-met">9.5</td>
+          <td class="bar"><div class="bar-track"><div class="bar-fill" style="width:95%; background:var(--olive);"></div><div class="bar-target"></div></div></td>
+          <td class="cite">system_prompt.py:274-280</td>
+          <td class="gap gap-met">✓</td>
+        </tr>
+        <tr>
+          <td class="id">P02</td>
+          <td class="name">Deferred Context Loading</td>
+          <td class="score sc-score-near">9.0</td>
+          <td class="bar"><div class="bar-track"><div class="bar-fill" style="width:90%; background:var(--clay);"></div><div class="bar-target"></div></div></td>
+          <td class="cite">agent_init.py:914-931</td>
+          <td class="gap gap-near">−0.5</td>
+        </tr>
+        <tr>
+          <td class="id">P03</td>
+          <td class="name">Mechanical Learning Loop</td>
+          <td class="score sc-score-met">9.5</td>
+          <td class="bar"><div class="bar-track"><div class="bar-fill" style="width:95%; background:var(--olive);"></div><div class="bar-target"></div></div></td>
+          <td class="cite">conversation_loop.py:441-448</td>
+          <td class="gap gap-met">✓</td>
+        </tr>
+        <tr>
+          <td class="id">P04</td>
+          <td class="name">Strong Read Path</td>
+          <td class="score sc-score-met">9.5</td>
+          <td class="bar"><div class="bar-track"><div class="bar-fill" style="width:95%; background:var(--olive);"></div><div class="bar-target"></div></div></td>
+          <td class="cite">tools/session_search_tool.py</td>
+          <td class="gap gap-met">✓</td>
+        </tr>
+        <tr>
+          <td class="id">P05</td>
+          <td class="name">Model-Adaptive Guidance</td>
+          <td class="score sc-score-met">9.5</td>
+          <td class="bar"><div class="bar-track"><div class="bar-fill" style="width:95%; background:var(--olive);"></div><div class="bar-target"></div></div></td>
+          <td class="cite">system_prompt.py:164-173</td>
+          <td class="gap gap-met">✓</td>
+        </tr>
+        <tr>
+          <td class="id">P06</td>
+          <td class="name">Subagent Delegation</td>
+          <td class="score sc-score-met">9.5</td>
+          <td class="bar"><div class="bar-track"><div class="bar-fill" style="width:95%; background:var(--olive);"></div><div class="bar-target"></div></div></td>
+          <td class="cite">subagent_tool.py + subagent.py</td>
+          <td class="gap gap-met">✓</td>
+        </tr>
+        <tr>
+          <td class="id">P07</td>
+          <td class="name">Skill Lifecycle</td>
+          <td class="score sc-score-met">9.5</td>
+          <td class="bar"><div class="bar-track"><div class="bar-fill" style="width:95%; background:var(--olive);"></div><div class="bar-target"></div></div></td>
+          <td class="cite">agent/curator.py:256-294</td>
+          <td class="gap gap-met">✓</td>
+        </tr>
+        <tr>
+          <td class="id">P08</td>
+          <td class="name">Per-Turn Truth-Grounding</td>
+          <td class="score sc-score-met">9.5</td>
+          <td class="bar"><div class="bar-track"><div class="bar-fill" style="width:95%; background:var(--olive);"></div><div class="bar-target"></div></div></td>
+          <td class="cite">prompt_builder.py:371-383</td>
+          <td class="gap gap-met">✓</td>
+        </tr>
+        <tr>
+          <td class="id">P09</td>
+          <td class="name">Operator Ergonomics</td>
+          <td class="score sc-score-met">9.5</td>
+          <td class="bar"><div class="bar-track"><div class="bar-fill" style="width:95%; background:var(--olive);"></div><div class="bar-target"></div></div></td>
+          <td class="cite">hermes_cli/main.py:2050-2053</td>
+          <td class="gap gap-met">✓</td>
+        </tr>
+        <tr>
+          <td class="id">P10</td>
+          <td class="name">Security / Trust Model</td>
+          <td class="score sc-score-near">9.0</td>
+          <td class="bar"><div class="bar-track"><div class="bar-fill" style="width:90%; background:var(--clay);"></div><div class="bar-target"></div></div></td>
+          <td class="cite">agent/sandbox.py:31-48</td>
+          <td class="gap gap-near">−0.5</td>
+        </tr>
+        <tr>
+          <td class="id">P11</td>
+          <td class="name">Multi-Surface Presence</td>
+          <td class="score sc-score-met">9.5</td>
+          <td class="bar"><div class="bar-track"><div class="bar-fill" style="width:95%; background:var(--olive);"></div><div class="bar-target"></div></div></td>
+          <td class="cite">gateway/platforms/ (18+ files)</td>
+          <td class="gap gap-met">✓</td>
+        </tr>
+        <tr>
+          <td class="id">P12</td>
+          <td class="name">Compaction Under Pressure</td>
+          <td class="score sc-score-near">9.0</td>
+          <td class="bar"><div class="bar-track"><div class="bar-fill" style="width:90%; background:var(--clay);"></div><div class="bar-target"></div></div></td>
+          <td class="cite">conversation_loop.py:476-541</td>
+          <td class="gap gap-near">−0.5</td>
+        </tr>
+        <tr>
+          <td class="id">P13</td>
+          <td class="name">Provider / Model Flexibility</td>
+          <td class="score sc-score-met">9.5</td>
+          <td class="bar"><div class="bar-track"><div class="bar-fill" style="width:95%; background:var(--olive);"></div><div class="bar-target"></div></div></td>
+          <td class="cite">hermes_cli/models.py (30+ providers)</td>
+          <td class="gap gap-met">✓</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- ── priority stack ── -->
+    <h2 id="priorities">Priority improvements</h2>
+    <p>Top 3 gaps ranked by distance from 9.5. Each one is a specific source change, not a direction.</p>
+
+    <ul class="priorities">
+      <li>
+        <span class="pri-rank">1</span>
+        <span class="pri-gap">gap −0.5</span>
+        <div class="pri-body">
+          <div class="pri-title">P02 — Cache-Stable System Prompt</div>
+          <div class="pri-action">Add <code>HERMES_DEFER_TOOL_SCHEMAS=1</code> flag to suppress full schemas from the API <code>tools</code> parameter. When active, inject a compact name+description index into the stable prompt tier; <code>tool_search</code> (already present) returns full schemas on demand. The ALWAYS_LOADED_TOOLS pattern is in place — this closes the last gap in <code>agent/agent_init.py:914-931</code>.</div>
+        </div>
+      </li>
+      <li>
+        <span class="pri-rank">2</span>
+        <span class="pri-gap">gap −0.5</span>
+        <div class="pri-body">
+          <div class="pri-title">P10 — Deferred Context Loading</div>
+          <div class="pri-action">Sandbox backend unavailability now emits a <code>logger.warning()</code> (added in this cycle) but still degrades to unsandboxed execution silently after the warning. Structural enforcement — requiring sandbox or explicit opt-out before any shell invocation — would close this gap. Add a <code>HERMES_SANDBOX_REQUIRE=1</code> mode that raises <code>SandboxUnavailableError</code> instead of degrading.</div>
+        </div>
+      </li>
+      <li>
+        <span class="pri-rank">3</span>
+        <span class="pri-gap">gap −0.5</span>
+        <div class="pri-body">
+          <div class="pri-title">P12 — Mechanical Learning Loop</div>
+          <div class="pri-action">Pre-turn and 413-recovery compaction are solid. The remaining gap is true mid-turn streaming compaction: catching context overflow <em>during</em> a streaming response (not just on 413 error) and restarting the stream with compacted history. Implement a <code>StreamingCompactor</code> wrapper in <code>agent/conversation_loop.py</code> that catches <code>ContextLimitError</code> mid-stream, compacts, and retries — matching Codex <code>compact.rs</code> stage-2 behavior.</div>
+        </div>
+      </li>
+    </ul>
+
+    <!-- ── principle deep-dives ── -->
+    <h2 id="deepdives">Principle deep-dives</h2>
+    <p>One block per principle. <code>Found</code> = what evidence the audit located; <code>Missing</code> = what would be needed to reach 9.5 (omitted when score is already 9.5); <code>To reach 9.5</code> = a concrete source change; <code>Canonical Architecture</code> = the reference pattern from `references/architecture.md` with winner citations.</p>
+
+    <!--
+      REPEAT this principle block 13 times (P01–P13). Notes:
+      · Add <span class="met-tag">TARGET MET</span> after .pname text when score ≥ 9.5.
+      · Omit the .info.missing block entirely when score ≥ 9.5.
+      · Use "To reach 9.5" as the .rec label when score < 9.5; "To maintain 9.5+" when score = 9.5.
+      · Inside .pmargin > .mcites, emit one .mcite-group per harness that has citations
+        for this principle (drawn from references/architecture.md § Winner Reference).
+    -->
+    <article class="principle" id="p01">
+      <div class="grid">
+        <div>
+          <div class="principle-head">
+            <span class="pid">P01</span>
+            <span class="pname">Cache-Stable System Prompt<span class="met-tag">TARGET MET</span></span>
+          </div>
+          <div class="info found">
+            <div class="lab">Found</div>
+            <code>agent/system_prompt.py:274-280</code> — date-only timestamp <code>now.strftime('%A, %B %d, %Y')</code> with explicit comment crediting @iamfoz (PR #20451) for the cache-stability invariant. <code>agent/conversation_loop.py:471-472</code> — <code>_cached_system_prompt</code> guard: prompt built once at session start, never rebuilt mid-session. <code>agent/system_prompt.py:315-323</code> — <code>invalidate_system_prompt()</code> called only after compression events. Three-tier architecture (stable/context/volatile) with clean ordering preserved across all turns.
+          </div>
+          <div class="info rec">
+            <div class="lab">To maintain 9.5+</div>
+            Guard against any new volatile content entering the stable or context tiers. The invariant is well-documented; enforce it in code review as "nothing with per-turn variance goes above the volatile tier."
+          </div>
+          <div class="arch">
+            <div class="lab">Canonical architecture — Hermes</div>
+            <div class="row"><b>Pattern:</b> </div>
+            <div class="row"><b>Anti-pattern:</b> </div>
+            <div class="row"><b>Rationale:</b> </div>
+            <span class="winner">Winner refs: </span>
+          </div>
+        </div>
+        <aside class="pmargin">
+          <div class="pscore met">9.5<span class="denom">/10</span></div>
+          <div class="mcites">
+            <div class="mcite-group">
+          <span class="htag">hermes</span>
+          <span class="mcite-item">agent/system_prompt.py:274-280</span>
+          <span class="mcite-item">system_prompt.py:315-323</span>
+          <span class="mcite-item">conversation_loop.py:471-472</span>
+          </div>
+        </aside>
+      </div>
+    </article>
+    <article class="principle" id="p02">
+      <div class="grid">
+        <div>
+          <div class="principle-head">
+            <span class="pid">P02</span>
+            <span class="pname">Deferred Context Loading</span>
+          </div>
+          <div class="info found">
+            <div class="lab">Found</div>
+            <code>agent/agent_init.py:914-931</code> — <code>ALWAYS_LOADED_TOOLS</code> subset gates which tool schemas are injected into the API <code>tools</code> parameter; deferred tools are held in registry. Startup banner prints <code>+N deferred, use tool_search to discover</code>. <code>tools/tool_search.py</code> — expanded docstring now documents the full deferral contract: ALWAYS_LOADED_TOOLS, <code>__schema__:&lt;name&gt;</code> query protocol, and token-saving rationale. Memory uses MEMORY.md index-before-content. Skills listed description-only in stable tier. <code>tools/registry.py:30</code> — <code>ALWAYS_LOADED_TOOLS</code> frozenset defines the always-injected subset.
+          </div>
+          <div class="info missing">
+            <div class="lab">Missing</div>
+            Always-loaded tools still inject full JSON schemas via the API <code>tools</code> parameter on every turn. There is no <code>HERMES_DEFER_TOOL_SCHEMAS</code> flag to suppress this and replace it with a compact name+description list. The <code>tool_search</code> tool provides post-hoc discovery but does not prevent the upfront injection of always-loaded schemas.
+          </div>
+          <div class="info rec">
+            <div class="lab">To reach 9.5</div>
+            In <code>agent/agent_init.py:921</code>, add a check for <code>HERMES_DEFER_TOOL_SCHEMAS=1</code>. When set, omit the <code>tools</code> parameter from the API request entirely and instead inject a compact <code>name: description</code> index into the stable prompt tier. <code>tool_search</code> (already present) returns full schemas on demand. This is a backward-compatible flag addition.
+          </div>
+          <div class="arch">
+            <div class="lab">Canonical architecture — Claude Code + Hermes</div>
+            <div class="row"><b>Pattern:</b> </div>
+            <div class="row"><b>Anti-pattern:</b> </div>
+            <div class="row"><b>Rationale:</b> </div>
+            <span class="winner">Winner refs: </span>
+          </div>
+        </div>
+        <aside class="pmargin">
+          <div class="pscore near">9.0<span class="denom">/10</span></div>
+          <div class="mcites">
+            <div class="mcite-group">
+          <span class="htag">hermes</span>
+          <span class="mcite-item">agent_init.py:914-931</span>
+          <span class="mcite-item">tools/tool_search.py (docstring)</span>
+          <span class="mcite-item">tools/registry.py:30</span>
+        </div>
+        <div class="mcite-group">
+          <span class="htag">claude code</span>
+          <span class="mcite-item">ToolSearch deferred schema pattern</span>
+          </div>
+        </aside>
+      </div>
+    </article>
+    <article class="principle" id="p03">
+      <div class="grid">
+        <div>
+          <div class="principle-head">
+            <span class="pid">P03</span>
+            <span class="pname">Mechanical Learning Loop<span class="met-tag">TARGET MET</span></span>
+          </div>
+          <div class="info found">
+            <div class="lab">Found</div>
+            <code>agent/conversation_loop.py:441-448</code> — turn-based memory nudge: <code>_turns_since_memory</code> counter, configurable <code>_memory_nudge_interval</code> (default 5), fires <code>_should_review_memory</code> flag each N turns. <code>conversation_loop.py:710-712</code> — iteration-based skill nudge: <code>_iters_since_skill</code> counter fires after N tool iterations. <code>conversation_loop.py:402-412</code> — counter hydration from conversation history on process restart (Issue #22357 fix): <code>prior = sum(1 for m in history if m.get("role") == "user")</code>. <code>agent/curator.py:256-294</code> — <code>apply_automatic_transitions()</code> deterministic state machine. <code>curator.py:1369-1450</code> — <code>run_curator_review()</code> spawns forked AIAgent LLM review pass with pre-snapshot at 1411-1413.
+          </div>
+          <div class="info rec">
+            <div class="lab">To maintain 9.5+</div>
+            All mechanisms are in place. Maintain counter hydration logic when adding new gateway modes. Ensure <code>_memory_nudge_interval</code> and <code>_skill_nudge_interval</code> remain configurable via config.yaml, not hardcoded.
+          </div>
+          <div class="arch">
+            <div class="lab">Canonical architecture — Hermes</div>
+            <div class="row"><b>Pattern:</b> </div>
+            <div class="row"><b>Anti-pattern:</b> </div>
+            <div class="row"><b>Rationale:</b> </div>
+            <span class="winner">Winner refs: </span>
+          </div>
+        </div>
+        <aside class="pmargin">
+          <div class="pscore met">9.5<span class="denom">/10</span></div>
+          <div class="mcites">
+            <div class="mcite-group">
+          <span class="htag">hermes</span>
+          <span class="mcite-item">conversation_loop.py:441-448</span>
+          <span class="mcite-item">conversation_loop.py:710-712</span>
+          <span class="mcite-item">conversation_loop.py:402-412</span>
+          <span class="mcite-item">curator.py:1369-1450</span>
+          </div>
+        </aside>
+      </div>
+    </article>
+    <article class="principle" id="p04">
+      <div class="grid">
+        <div>
+          <div class="principle-head">
+            <span class="pid">P04</span>
+            <span class="pname">Strong Read Path<span class="met-tag">TARGET MET</span></span>
+          </div>
+          <div class="info found">
+            <div class="lab">Found</div>
+            <code>tools/session_search_tool.py</code> — FTS5-backed SQLite full-text search with three modes: discovery (FTS5 query over message content), scroll (window around a specific message), recent (metadata-only for newest sessions). Returns summaries with ±5 message context, not full transcripts. Memory index-before-content: MEMORY.md lists all entries as one-line slugs; full content fetched on demand via <code>memory(action='read')</code>. <code>agent/prompt_builder.py:371-383</code> — <code>TRUTH_GROUNDING_DOCTRINE</code> includes explicit retrieve-before-recall rules. SESSION_SEARCH_GUIDANCE in stable tier.
+          </div>
+          <div class="info rec">
+            <div class="lab">To maintain 9.5+</div>
+            FTS5 index should be re-vacuumed periodically for sessions DBs that grow beyond 100MB. Add <code>hermes doctor</code> check for session DB size and index health.
+          </div>
+          <div class="arch">
+            <div class="lab">Canonical architecture — Hermes + Claude Code</div>
+            <div class="row"><b>Pattern:</b> </div>
+            <div class="row"><b>Anti-pattern:</b> </div>
+            <div class="row"><b>Rationale:</b> </div>
+            <span class="winner">Winner refs: </span>
+          </div>
+        </div>
+        <aside class="pmargin">
+          <div class="pscore met">9.5<span class="denom">/10</span></div>
+          <div class="mcites">
+            <div class="mcite-group">
+          <span class="htag">hermes</span>
+          <span class="mcite-item">tools/session_search_tool.py</span>
+          <span class="mcite-item">prompt_builder.py:371-383</span>
+        </div>
+        <div class="mcite-group">
+          <span class="htag">claude code</span>
+          <span class="mcite-item">MEMORY.md index pattern</span>
+          </div>
+        </aside>
+      </div>
+    </article>
+    <article class="principle" id="p05">
+      <div class="grid">
+        <div>
+          <div class="principle-head">
+            <span class="pid">P05</span>
+            <span class="pname">Model-Adaptive Guidance<span class="met-tag">TARGET MET</span></span>
+          </div>
+          <div class="info found">
+            <div class="lab">Found</div>
+            <code>agent/system_prompt.py:164-173</code> — model family detection in stable tier: checks <code>("gpt", "codex", "grok")</code> → injects <code>OPENAI_MODEL_EXECUTION_GUIDANCE</code>; checks <code>("gemini", "gemma")</code> → injects <code>GOOGLE_MODEL_OPERATIONAL_GUIDANCE</code>. <code>agent/system_prompt.py:198-205</code> — Alibaba model-name API bug workaround injected conditionally. <code>config.yaml</code> <code>tool_use_enforcement: auto | true | false | [model-substrings]</code> configurable override. Both guidance blocks placed in stable tier — cache-warm across turns.
+          </div>
+          <div class="info rec">
+            <div class="lab">To maintain 9.5+</div>
+            When adding new model families, add their guidance to the stable tier pattern — not to config or volatile. Guidance in volatile would invalidate the cache on every turn.
+          </div>
+          <div class="arch">
+            <div class="lab">Canonical architecture — Hermes</div>
+            <div class="row"><b>Pattern:</b> </div>
+            <div class="row"><b>Anti-pattern:</b> </div>
+            <div class="row"><b>Rationale:</b> </div>
+            <span class="winner">Winner refs: </span>
+          </div>
+        </div>
+        <aside class="pmargin">
+          <div class="pscore met">9.5<span class="denom">/10</span></div>
+          <div class="mcites">
+            <div class="mcite-group">
+          <span class="htag">hermes</span>
+          <span class="mcite-item">system_prompt.py:164-173</span>
+          <span class="mcite-item">system_prompt.py:198-205</span>
+          </div>
+        </aside>
+      </div>
+    </article>
+    <article class="principle" id="p06">
+      <div class="grid">
+        <div>
+          <div class="principle-head">
+            <span class="pid">P06</span>
+            <span class="pname">Subagent Delegation<span class="met-tag">TARGET MET</span></span>
+          </div>
+          <div class="info found">
+            <div class="lab">Found</div>
+            <code>tools/subagent_tool.py</code> — <code>spawn_subagent</code> tool with four typed specializations (explore/review/plan/execute), each with a focused system prompt and defined output contract. <code>agent/subagent.py:138-157</code> — <code>spawn_subagents_parallel()</code> dispatches multiple tasks concurrently via <code>asyncio.gather()</code>; now exposed via <code>tasks[]</code> parameter in tool schema (added this cycle). <code>agent/subagent.py:68-113</code> — <code>_create_worktree()</code> / <code>_cleanup_worktree()</code> helpers for git-isolated execute-type runs; <code>spawn_subagent(worktree=True)</code> creates an isolated branch, runs the subagent, and cleans up in <code>finally</code>. Main context receives summary only — full subagent trace discarded. <code>agent/background_review.py</code> — background fork for post-turn review that doesn't block the main conversation.
+          </div>
+          <div class="info rec">
+            <div class="lab">To maintain 9.5+</div>
+            Expose <code>worktree=true</code> in the tool description more prominently — operators may not discover it. Add a <code>hermes doctor</code> check that confirms <code>git</code> is in PATH so worktree mode works when requested. Consider adding a typed output schema validation so <code>execute</code> subagents are verified to return STATUS/FILES_CHANGED/SUMMARY sections.
+          </div>
+          <div class="arch">
+            <div class="lab">Canonical architecture — Claude Code + Hermes</div>
+            <div class="row"><b>Pattern:</b> </div>
+            <div class="row"><b>Anti-pattern:</b> </div>
+            <div class="row"><b>Rationale:</b> </div>
+            <span class="winner">Winner refs: </span>
+          </div>
+        </div>
+        <aside class="pmargin">
+          <div class="pscore met">9.5<span class="denom">/10</span></div>
+          <div class="mcites">
+            <div class="mcite-group">
+          <span class="htag">hermes</span>
+          <span class="mcite-item">tools/subagent_tool.py (tasks[], worktree)</span>
+          <span class="mcite-item">agent/subagent.py:68-113</span>
+          <span class="mcite-item">agent/subagent.py:138-157</span>
+        </div>
+        <div class="mcite-group">
+          <span class="htag">claude code</span>
+          <span class="mcite-item">Agent tool (typed subagent_type)</span>
+          </div>
+        </aside>
+      </div>
+    </article>
+    <article class="principle" id="p07">
+      <div class="grid">
+        <div>
+          <div class="principle-head">
+            <span class="pid">P07</span>
+            <span class="pname">Skill Lifecycle<span class="met-tag">TARGET MET</span></span>
+          </div>
+          <div class="info found">
+            <div class="lab">Found</div>
+            <code>agent/curator.py:256-294</code> — <code>apply_automatic_transitions()</code>: deterministic state machine (<code>active → stale → archived → reactivate</code>) with configurable <code>stale_after_days</code> (default 30) and <code>archive_after_days</code> (default 90). Reactivation fires when <code>use_count</code> increases on a stale skill. <code>curator.py:1369-1450</code> — <code>run_curator_review()</code> spawns a forked AIAgent for LLM review pass over agent-created skills; pre-snapshot at <code>1411-1413</code> via <code>curator_backup.snapshot_skills()</code>. Skill metadata YAML includes <code>state</code>, <code>created_at</code>, <code>last_used_at</code>, <code>created_by: agent|user</code>, <code>use_count</code>.
+          </div>
+          <div class="info rec">
+            <div class="lab">To maintain 9.5+</div>
+            Verify that the curator's REPORT.md diff is surfaced to the operator in a visible way (not just written to disk). Add a configurable <code>curator.notify_on_archive: true</code> option to send a summary message when skills are archived.
+          </div>
+          <div class="arch">
+            <div class="lab">Canonical architecture — Hermes</div>
+            <div class="row"><b>Pattern:</b> </div>
+            <div class="row"><b>Anti-pattern:</b> </div>
+            <div class="row"><b>Rationale:</b> </div>
+            <span class="winner">Winner refs: </span>
+          </div>
+        </div>
+        <aside class="pmargin">
+          <div class="pscore met">9.5<span class="denom">/10</span></div>
+          <div class="mcites">
+            <div class="mcite-group">
+          <span class="htag">hermes</span>
+          <span class="mcite-item">curator.py:256-294</span>
+          <span class="mcite-item">curator.py:1369-1450</span>
+          <span class="mcite-item">curator.py:1411-1413</span>
+          </div>
+        </aside>
+      </div>
+    </article>
+    <article class="principle" id="p08">
+      <div class="grid">
+        <div>
+          <div class="principle-head">
+            <span class="pid">P08</span>
+            <span class="pname">Per-Turn Truth-Grounding<span class="met-tag">TARGET MET</span></span>
+          </div>
+          <div class="info found">
+            <div class="lab">Found</div>
+            <code>agent/prompt_builder.py:371-383</code> — <code>TRUTH_GROUNDING_DOCTRINE</code> injected unconditionally in stable tier: "Never fabricate a file path, function name, or API signature." Explicit verification rules for file paths (<code>ls/find</code>), symbols (<code>grep -r</code>), APIs (docs_search/ctx7), and memory staleness (<code>[STALE]</code> entries flagged). <code>tools/memory_tool.py:64-65</code> — <code>MEMORY_STALE_DAYS = int(os.getenv("HERMES_MEMORY_STALE_DAYS", "30"))</code>; entries older than threshold auto-flagged <code>[STALE — Nd]</code> in system prompt (lines 487-488, 535-538). <code>agent/prompt_builder.py:171-173</code> — <code>MEMORY_GUIDANCE</code> now explicitly states: "Entries older than HERMES_MEMORY_STALE_DAYS (default 30) are automatically flagged [STALE — Nd] in your system prompt. Re-verify any stale entry before citing it." This was added in this audit cycle, completing the doctrine.
+          </div>
+          <div class="info rec">
+            <div class="lab">To maintain 9.5+</div>
+            The three-layer truth stack (doctrine + structural <code>[STALE]</code> flagging + explicit MEMORY_GUIDANCE) is now complete. To harden further: add a <code>quality_gate</code> tool that structurally checks file existence and symbol presence before the agent reports completion on non-trivial tasks.
+          </div>
+          <div class="arch">
+            <div class="lab">Canonical architecture — Claude Code + Hermes</div>
+            <div class="row"><b>Pattern:</b> </div>
+            <div class="row"><b>Anti-pattern:</b> </div>
+            <div class="row"><b>Rationale:</b> </div>
+            <span class="winner">Winner refs: </span>
+          </div>
+        </div>
+        <aside class="pmargin">
+          <div class="pscore met">9.5<span class="denom">/10</span></div>
+          <div class="mcites">
+            <div class="mcite-group">
+          <span class="htag">hermes</span>
+          <span class="mcite-item">prompt_builder.py:371-383</span>
+          <span class="mcite-item">prompt_builder.py:171-173</span>
+          <span class="mcite-item">memory_tool.py:64-65</span>
+        </div>
+        <div class="mcite-group">
+          <span class="htag">claude code</span>
+          <span class="mcite-item">global CLAUDE.md (doctrine)</span>
+          </div>
+        </aside>
+      </div>
+    </article>
+    <article class="principle" id="p09">
+      <div class="grid">
+        <div>
+          <div class="principle-head">
+            <span class="pid">P09</span>
+            <span class="pname">Operator Ergonomics<span class="met-tag">TARGET MET</span></span>
+          </div>
+          <div class="info found">
+            <div class="lab">Found</div>
+            <code>install.sh</code> — one-line bootstrap: <code>curl -fsSL &lt;url&gt; | bash</code> handles uv install + PATH setup. <code>hermes_cli/main.py:2050-2053</code> — <code>hermes setup</code> interactive wizard; first-run auto-trigger at <code>1692-1714</code>. <code>hermes_cli/auth.py:509</code> — auth chain resolves <code>ANTHROPIC_API_KEY → ANTHROPIC_TOKEN → CLAUDE_CODE_OAUTH_TOKEN</code>, eliminating API key requirement for most users. <code>hermes_cli/plugins.py</code> — 4-path plugin discovery: bundled, user, project, pip entry-points. 30+ providers in <code>hermes_cli/models.py</code>. <code>hermes doctor</code> diagnoses and explains common issues.
+          </div>
+          <div class="info rec">
+            <div class="lab">To maintain 9.5+</div>
+            Ensure the <code>hermes doctor</code> sandbox check surfaces the new <code>_warn_sandbox_unavailable()</code> warning message to operators who run doctor after a fresh install without bwrap. The check already exists at <code>doctor.py:1089-1097</code>.
+          </div>
+          <div class="arch">
+            <div class="lab">Canonical architecture — Hermes</div>
+            <div class="row"><b>Pattern:</b> </div>
+            <div class="row"><b>Anti-pattern:</b> </div>
+            <div class="row"><b>Rationale:</b> </div>
+            <span class="winner">Winner refs: </span>
+          </div>
+        </div>
+        <aside class="pmargin">
+          <div class="pscore met">9.5<span class="denom">/10</span></div>
+          <div class="mcites">
+            <div class="mcite-group">
+          <span class="htag">hermes</span>
+          <span class="mcite-item">hermes_cli/main.py:2050-2053</span>
+          <span class="mcite-item">hermes_cli/auth.py:509</span>
+          <span class="mcite-item">doctor.py:1089-1097</span>
+          </div>
+        </aside>
+      </div>
+    </article>
+    <article class="principle" id="p10">
+      <div class="grid">
+        <div>
+          <div class="principle-head">
+            <span class="pid">P10</span>
+            <span class="pname">Security / Trust Model</span>
+          </div>
+          <div class="info found">
+            <div class="lab">Found</div>
+            <code>agent/sandbox.py:94-98</code> — bubblewrap (<code>bwrap --unshare-net</code>) on Linux, Seatbelt (<code>sandbox-exec</code>) on macOS. <code>agent/sandbox.py:31-48</code> — <code>_warn_sandbox_unavailable()</code> now emits a one-time <code>logger.warning()</code> with install instructions when the backend is absent and <code>HERMES_SANDBOX_DISABLED</code> is not set (added this cycle). <code>agent/tool_guardrails.py:29,44</code> — per-call JSONL audit log to <code>~/.hermes/audit.jsonl</code>. <code>tool_guardrails.py:283-291</code> — <code>HERMES_ALLOWED_TOOLS</code> allowlist enforced before dispatch. <code>tool_guardrails.py:304-331</code> — repeated-failure blocking. <code>doctor.py:1089-1097</code> — <code>hermes doctor</code> checks and reports sandbox status.
+          </div>
+          <div class="info missing">
+            <div class="lab">Missing</div>
+            When <code>bwrap</code>/<code>sandbox-exec</code> is unavailable, execution still proceeds unsandboxed after the warning — the warning is informational, not structural. There is no <code>HERMES_SANDBOX_REQUIRE=1</code> mode that raises an error instead of degrading. An operator who sees the warning but doesn't act on it continues running unprotected without further notice.
+          </div>
+          <div class="info rec">
+            <div class="lab">To reach 9.5</div>
+            In <code>agent/sandbox.py:_warn_sandbox_unavailable()</code>, add a check for <code>HERMES_SANDBOX_REQUIRE</code> env var. When set, raise <code>SandboxUnavailableError</code> instead of logging and returning. Document in <code>hermes setup</code> wizard that operators should set this in production deployments. This converts a loud warning into a structural enforcement gate.
+          </div>
+          <div class="arch">
+            <div class="lab">Canonical architecture — Codex + Claude Code</div>
+            <div class="row"><b>Pattern:</b> </div>
+            <div class="row"><b>Anti-pattern:</b> </div>
+            <div class="row"><b>Rationale:</b> </div>
+            <span class="winner">Winner refs: </span>
+          </div>
+        </div>
+        <aside class="pmargin">
+          <div class="pscore near">9.0<span class="denom">/10</span></div>
+          <div class="mcites">
+            <div class="mcite-group">
+          <span class="htag">hermes</span>
+          <span class="mcite-item">agent/sandbox.py:31-48</span>
+          <span class="mcite-item">tool_guardrails.py:283-291</span>
+          <span class="mcite-item">tool_guardrails.py:304-331</span>
+        </div>
+        <div class="mcite-group">
+          <span class="htag">codex</span>
+          <span class="mcite-item">AGENTS.md Seatbelt sandbox</span>
+        </div>
+        <div class="mcite-group">
+          <span class="htag">claude code</span>
+          <span class="mcite-item">settings.json allowedTools</span>
+          <span class="mcite-item">PreToolUse hooks</span>
+          </div>
+        </aside>
+      </div>
+    </article>
+    <article class="principle" id="p11">
+      <div class="grid">
+        <div>
+          <div class="principle-head">
+            <span class="pid">P11</span>
+            <span class="pname">Multi-Surface Presence<span class="met-tag">TARGET MET</span></span>
+          </div>
+          <div class="info found">
+            <div class="lab">Found</div>
+            <code>gateway/platforms/</code> — 18+ platform files: telegram, slack, discord, whatsapp, signal, feishu, feishu_comment, dingtalk, matrix, mattermost, sms, email, wecom, weixin, yuanbao, bluebubbles, homeassistant, msgraph_webhook, api_server. All gateways resolve memory to <code>~/.hermes/memory/</code> — same absolute path used by CLI surface. USER.md profile shared across all surfaces. <code>gateway/</code> platform-agnostic handler with <code>PLATFORM_HINTS</code> dict for surface-aware stable-tier injection.
+          </div>
+          <div class="info rec">
+            <div class="lab">To maintain 9.5+</div>
+            Verify that gateway sessions create <code>~/.hermes/sessions/</code> DB entries alongside CLI sessions so <code>session_search</code> can retrieve cross-surface history. This closes the read-path loop for multi-surface memory.
+          </div>
+          <div class="arch">
+            <div class="lab">Canonical architecture — Hermes</div>
+            <div class="row"><b>Pattern:</b> </div>
+            <div class="row"><b>Anti-pattern:</b> </div>
+            <div class="row"><b>Rationale:</b> </div>
+            <span class="winner">Winner refs: </span>
+          </div>
+        </div>
+        <aside class="pmargin">
+          <div class="pscore met">9.5<span class="denom">/10</span></div>
+          <div class="mcites">
+            <div class="mcite-group">
+          <span class="htag">hermes</span>
+          <span class="mcite-item">gateway/platforms/ (18+ files)</span>
+          <span class="mcite-item">~/.hermes/memory/ (shared path)</span>
+          </div>
+        </aside>
+      </div>
+    </article>
+    <article class="principle" id="p12">
+      <div class="grid">
+        <div>
+          <div class="principle-head">
+            <span class="pid">P12</span>
+            <span class="pname">Compaction Under Pressure</span>
+          </div>
+          <div class="info found">
+            <div class="lab">Found</div>
+            <code>agent/conversation_loop.py:476-541</code> — pre-turn preflight compaction at 85% of the model's context threshold (resolved via <code>agent.context_compressor.threshold_tokens</code>). <code>conversation_loop.py:2359-2587</code> — 413 error handler with auto-recompaction and retry. <code>conversation_loop.py:34-40</code> — <code>CompactionLoopError</code> raised after max consecutive compressions without progress. <code>agent/compaction_analytics.py</code> — per-event JSONL to <code>~/.hermes/compaction.jsonl</code> with trigger/strategy/tokens_before/after/reduction_pct. <code>providers/base.py:78</code> — <code>ProviderProfile.default_context_length</code> field added this cycle; <code>agent_init.py:1379-1389</code> — wired as provider-level fallback in compressor init chain. Tool output truncation via <code>HERMES_MAX_TOOL_OUTPUT_TOKENS</code>.
+          </div>
+          <div class="info missing">
+            <div class="lab">Missing</div>
+            No true mid-turn streaming compaction. The 413 handler catches the error <em>after</em> the streaming response fails; it does not intercept the stream mid-flight and recompact. Codex <code>compact.rs</code> stage-2 catches <code>ContextLimitError</code> during <code>async for chunk in stream</code>, recompacts, and restarts the stream. Hermes recovers from 413 but does not recover from mid-stream truncation that doesn't produce an error code.
+          </div>
+          <div class="info rec">
+            <div class="lab">To reach 9.5</div>
+            In <code>agent/conversation_loop.py</code>, wrap the streaming response iterator in a <code>StreamingCompactor</code> context manager. On <code>ContextLimitError</code> mid-stream, compact messages, restart the stream, and continue yielding chunks. This requires the streaming path to be restartable — extract the API call into a <code>_call_model(messages)</code> helper that can be retried with compacted messages.
+          </div>
+          <div class="arch">
+            <div class="lab">Canonical architecture — Codex + Hermes</div>
+            <div class="row"><b>Pattern:</b> </div>
+            <div class="row"><b>Anti-pattern:</b> </div>
+            <div class="row"><b>Rationale:</b> </div>
+            <span class="winner">Winner refs: </span>
+          </div>
+        </div>
+        <aside class="pmargin">
+          <div class="pscore near">9.0<span class="denom">/10</span></div>
+          <div class="mcites">
+            <div class="mcite-group">
+          <span class="htag">hermes</span>
+          <span class="mcite-item">conversation_loop.py:476-541</span>
+          <span class="mcite-item">conversation_loop.py:2359-2587</span>
+          <span class="mcite-item">compaction_analytics.py</span>
+          <span class="mcite-item">providers/base.py:78</span>
+        </div>
+        <div class="mcite-group">
+          <span class="htag">codex</span>
+          <span class="mcite-item">codex-rs/core/src/compact.rs</span>
+          </div>
+        </aside>
+      </div>
+    </article>
+    <article class="principle" id="p13">
+      <div class="grid">
+        <div>
+          <div class="principle-head">
+            <span class="pid">P13</span>
+            <span class="pname">Provider / Model Flexibility<span class="met-tag">TARGET MET</span></span>
+          </div>
+          <div class="info found">
+            <div class="lab">Found</div>
+            <code>hermes_cli/models.py</code> — <code>_PROVIDER_MODELS</code> dict with 30+ providers: nous, openai, openai-codex, xai, gemini, google-gemini-cli, zai, nvidia, kimi-coding, stepfun, moonshot, minimax, deepseek, alibaba, alibaba-coding-plan, huggingface, bedrock, azure-foundry, novita, and more. OpenRouter adds 200+ additional models. <code>providers/base.py:38-82</code> — <code>ProviderProfile</code> dataclass with <code>name</code>, <code>api_mode</code>, <code>env_vars</code>, <code>base_url</code>, <code>auth_type</code>, <code>fallback_models</code>, <code>default_headers</code>, <code>default_context_length</code> (added this cycle). <code>hermes_cli/auth.py:183</code> — <code>PROVIDER_REGISTRY</code>. <code>auth.py:509</code> — tiered auth chain resolves <code>ANTHROPIC_API_KEY → ANTHROPIC_TOKEN → CLAUDE_CODE_OAUTH_TOKEN</code>. <code>hermes model</code> command for interactive switching. AWS Bedrock IAM, Azure Entra Identity supported.
+          </div>
+          <div class="info rec">
+            <div class="lab">To maintain 9.5+</div>
+            The <code>ProviderProfile.default_context_length</code> field is now available for operators building custom provider profiles. Document it in the provider plugin README so third-party providers set accurate context windows without needing per-model entries in <code>model_metadata.py</code>.
+          </div>
+          <div class="arch">
+            <div class="lab">Canonical architecture — Hermes</div>
+            <div class="row"><b>Pattern:</b> </div>
+            <div class="row"><b>Anti-pattern:</b> </div>
+            <div class="row"><b>Rationale:</b> </div>
+            <span class="winner">Winner refs: </span>
+          </div>
+        </div>
+        <aside class="pmargin">
+          <div class="pscore met">9.5<span class="denom">/10</span></div>
+          <div class="mcites">
+            <div class="mcite-group">
+          <span class="htag">hermes</span>
+          <span class="mcite-item">providers/base.py:38-82</span>
+          <span class="mcite-item">hermes_cli/auth.py:509</span>
+          <span class="mcite-item">hermes_cli/models.py (30+ providers)</span>
+          </div>
+        </aside>
+      </div>
+    </article>
+
+    <footer>
+      Generated by agentharness-audit v1.0 on 2026-05-24. Evidence source: direct codebase inspection of agent/, tools/, skills/ tree. Comparative baseline: Hermes · Claude Code · Codex CLI.
+    </footer>
+  </main>
+</div>
+
+<script>
+// Active-link highlighter for sidebar TOC via IntersectionObserver
+const links = document.querySelectorAll("nav.toc a[href^='#']");
+const obs = new IntersectionObserver(entries => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      links.forEach(l => l.classList.toggle("active",
+        l.getAttribute("href") === "#" + e.target.id));
+    }
+  });
+}, { rootMargin: "-40% 0px -50% 0px" });
+links.forEach(a => {
+  const el = document.getElementById(a.getAttribute("href").slice(1));
+  if (el) obs.observe(el);
+});
+</script>
+</body>
+</html>

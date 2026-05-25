@@ -25,6 +25,21 @@ from typing import Callable, Dict, List, Optional, Set
 
 logger = logging.getLogger(__name__)
 
+# Tools always included in agent.tools regardless of HERMES_LOAD_ALL_TOOLS.
+# Keep to ≤12 entries — the rest are discoverable via the tool_search tool.
+ALWAYS_LOADED_TOOLS: frozenset[str] = frozenset({
+    "terminal",
+    "read_file",
+    "write_file",
+    "list_dir",
+    "memory",
+    "session_search",
+    "docs_search",
+    "tool_search",
+    "skill_manage",
+    "web_search",
+})
+
 
 def _is_registry_register_call(node: ast.AST) -> bool:
     """Return True when *node* is a ``registry.register(...)`` call expression."""

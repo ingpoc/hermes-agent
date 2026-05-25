@@ -1,20 +1,52 @@
-"""Pure tool-call loop guardrail primitives.
+"""Tool-call loop guardrail primitives and audit logging.
 
-The controller in this module is intentionally side-effect free: it tracks
+The ToolCallGuardrailController is intentionally side-effect free: it tracks
 per-turn tool-call observations and returns decisions. Runtime code owns whether
 those decisions become warning guidance, synthetic tool results, or controlled
 turn halts.
+
+``log_tool_call()`` is a separate, opt-in function for per-call audit logging.
+It appends a JSONL record to ``~/.hermes/audit.jsonl`` (args are never logged
+raw — only their SHA-256 prefix is recorded to prevent credential leaks).
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any, Mapping
 
 from utils import safe_json_loads
 from agent.tool_result_classification import file_mutation_result_landed
+
+logger = logging.getLogger(__name__)
+
+
+def log_tool_call(tool_name: str, args: Mapping[str, Any] | None, result_code: int) -> None:
+    """Append a per-call audit record to ~/.hermes/audit.jsonl.
+
+    Args are never stored raw — only a short SHA-256 digest is recorded
+    to prevent credentials from appearing in the audit log.
+    """
+    try:
+        from hermes_constants import get_audit_log_path
+        canonical = json.dumps(args or {}, sort_keys=True, separators=(",", ":"), default=str)
+        args_digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
+        entry = {
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "tool": tool_name,
+            "args_hash": args_digest,
+            "result_code": result_code,
+        }
+        audit_path = get_audit_log_path()
+        audit_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(audit_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry) + "\n")
+    except Exception as exc:
+        logger.debug("audit log write failed (non-fatal): %s", exc)
 
 
 IDEMPOTENT_TOOL_NAMES = frozenset(
@@ -224,8 +256,14 @@ def classify_tool_failure(tool_name: str, result: str | None) -> tuple[bool, str
 class ToolCallGuardrailController:
     """Per-turn controller for repeated failed/non-progressing tool calls."""
 
-    def __init__(self, config: ToolCallGuardrailConfig | None = None):
+    def __init__(
+        self,
+        config: ToolCallGuardrailConfig | None = None,
+        *,
+        audit_log_enabled: bool = True,
+    ):
         self.config = config or ToolCallGuardrailConfig()
+        self._audit_log_enabled = audit_log_enabled
         self.reset_for_turn()
 
     def reset_for_turn(self) -> None:
@@ -239,6 +277,25 @@ class ToolCallGuardrailController:
         return self._halt_decision
 
     def before_call(self, tool_name: str, args: Mapping[str, Any] | None) -> ToolGuardrailDecision:
+        if self._audit_log_enabled:
+            log_tool_call(tool_name, args, result_code=0)
+
+        # Per-tool allowlist check (HERMES_ALLOWED_TOOLS).
+        try:
+            from hermes_constants import ALLOWED_TOOLS
+            if ALLOWED_TOOLS and tool_name not in ALLOWED_TOOLS:
+                return ToolGuardrailDecision(
+                    action="block",
+                    code="allowlist_denied",
+                    message=(
+                        f"Tool '{tool_name}' is not in the HERMES_ALLOWED_TOOLS allowlist. "
+                        f"Permitted tools: {', '.join(sorted(ALLOWED_TOOLS))}."
+                    ),
+                    tool_name=tool_name,
+                )
+        except Exception:
+            pass
+
         signature = ToolCallSignature.from_call(tool_name, _coerce_args(args))
         if not self.config.hard_stop_enabled:
             return ToolGuardrailDecision(tool_name=tool_name, signature=signature)

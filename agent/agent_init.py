@@ -905,19 +905,30 @@ def init_agent(
                   " → ".join(f"{f['model']} ({f['provider']})" for f in agent._fallback_chain))
 
     # Get available tools with filtering
-    agent.tools = _ra().get_tool_definitions(
+    _all_tools = _ra().get_tool_definitions(
         enabled_toolsets=enabled_toolsets,
         disabled_toolsets=disabled_toolsets,
         quiet_mode=agent.quiet_mode,
     )
-    
+
+    # Deferred context loading: only include ALWAYS_LOADED_TOOLS by default.
+    # Set HERMES_LOAD_ALL_TOOLS=1 to restore the full set (e.g. for automation).
+    import os as _os
+    if _os.getenv("HERMES_LOAD_ALL_TOOLS"):
+        agent.tools = _all_tools
+    else:
+        from tools.registry import ALWAYS_LOADED_TOOLS
+        agent.tools = [t for t in _all_tools if t["function"]["name"] in ALWAYS_LOADED_TOOLS]
+
     # Show tool configuration and store valid tool names for validation
     agent.valid_tool_names = set()
     if agent.tools:
         agent.valid_tool_names = {tool["function"]["name"] for tool in agent.tools}
         tool_names = sorted(agent.valid_tool_names)
         if not agent.quiet_mode:
-            print(f"🛠️  Loaded {len(agent.tools)} tools: {', '.join(tool_names)}")
+            _deferred = len(_all_tools) - len(agent.tools)
+            _deferred_note = f" (+{_deferred} deferred, use tool_search to discover)" if _deferred else ""
+            print(f"🛠️  Loaded {len(agent.tools)} tools: {', '.join(tool_names)}{_deferred_note}")
             # Show filtering info if applied
             if enabled_toolsets:
                 print(f"   ✅ Enabled toolsets: {', '.join(enabled_toolsets)}")
@@ -1362,6 +1373,20 @@ def init_agent(
                                         file=sys.stderr,
                                     )
                     break
+
+    # Provider-profile default_context_length — last fallback before auto-detection.
+    # Lets operators set a provider-level context window in ProviderProfile without
+    # needing a per-model entry in config.yaml.
+    if _config_context_length is None and agent.provider:
+        try:
+            from providers import get_provider_profile as _gpf_ctx
+            _pp = _gpf_ctx(agent.provider)
+            if _pp is not None:
+                _pp_ctx = getattr(_pp, "default_context_length", None)
+                if _pp_ctx and isinstance(_pp_ctx, int) and _pp_ctx > 0:
+                    _config_context_length = _pp_ctx
+        except Exception:
+            pass
 
     # Persist for reuse on switch_model / fallback activation. Must come
     # AFTER the custom_providers branch so per-model overrides aren't lost.

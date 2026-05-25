@@ -1492,7 +1492,7 @@ The user has requested that this compaction PRIORITISE preserving all informatio
     # Main compression entry point
     # ------------------------------------------------------------------
 
-    def compress(self, messages: List[Dict[str, Any]], current_tokens: int = None, focus_topic: str = None, force: bool = False) -> List[Dict[str, Any]]:
+    def compress(self, messages: List[Dict[str, Any]], current_tokens: int = None, focus_topic: str = None, force: bool = False, trigger: str = "pre_turn") -> List[Dict[str, Any]]:
         """Compress conversation messages by summarizing middle turns.
 
         Algorithm:
@@ -1745,5 +1745,20 @@ The user has requested that this compaction PRIORITISE preserving all informatio
                 savings_pct,
             )
             logger.info("Compression #%d complete", self.compression_count)
+
+        try:
+            from agent.compaction_analytics import CompactionEvent, log_compaction
+            log_compaction(CompactionEvent(
+                trigger=trigger,
+                strategy="summarize_middle",
+                tokens_before=int(display_tokens),
+                tokens_after=int(new_estimate),
+                messages_before=n_messages,
+                messages_after=len(compressed),
+                model=getattr(self, "model", "") or "",
+                session_id=getattr(self, "session_id", "") or "",
+            ))
+        except Exception:
+            pass
 
         return compressed

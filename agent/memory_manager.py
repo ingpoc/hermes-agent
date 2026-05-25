@@ -28,6 +28,7 @@ from __future__ import annotations
 import logging
 import re
 import inspect
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from agent.memory_provider import MemoryProvider
@@ -544,7 +545,13 @@ class MemoryManager:
         """Notify external providers when the built-in memory tool writes.
 
         Skips the builtin provider itself (it's the source of the write).
+        Always stamps ``written_at`` into the metadata so external providers
+        can implement their own staleness policies.
         """
+        enriched_metadata = dict(metadata or {})
+        if "written_at" not in enriched_metadata:
+            enriched_metadata["written_at"] = datetime.now(timezone.utc).isoformat()
+
         for provider in self._providers:
             if provider.name == "builtin":
                 continue
@@ -552,10 +559,10 @@ class MemoryManager:
                 metadata_mode = self._provider_memory_write_metadata_mode(provider)
                 if metadata_mode == "keyword":
                     provider.on_memory_write(
-                        action, target, content, metadata=dict(metadata or {})
+                        action, target, content, metadata=enriched_metadata
                     )
                 elif metadata_mode == "positional":
-                    provider.on_memory_write(action, target, content, dict(metadata or {}))
+                    provider.on_memory_write(action, target, content, enriched_metadata)
                 else:
                     provider.on_memory_write(action, target, content)
             except Exception as e:

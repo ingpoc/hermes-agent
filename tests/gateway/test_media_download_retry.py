@@ -829,7 +829,7 @@ class TestSlackDownloadSlackFileBytes:
 
 def _make_mm_adapter():
     """Build a minimal MattermostAdapter with mocked internals."""
-    from plugins.platforms.mattermost.adapter import MattermostAdapter
+    from gateway.platforms.mattermost import MattermostAdapter
     config = PlatformConfig(
         enabled=True, token="mm-token-fake",
         extra={"url": "https://mm.example.com"},

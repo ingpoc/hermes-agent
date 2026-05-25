@@ -593,8 +593,15 @@ class ProcessRegistry:
         bg_env["PYTHONUNBUFFERED"] = "1"
         _popen_kwargs = {"creationflags": windows_hide_flags()} if _IS_WINDOWS else {}
 
+        _popen_args = [user_shell, "-lic", f"set +m; {command}"]
+        try:
+            from agent.sandbox import wrap_in_sandbox
+            _popen_args = wrap_in_sandbox(_popen_args, env=bg_env, cwd=session.cwd)
+        except Exception:
+            pass
+
         proc = subprocess.Popen(
-            [user_shell, "-lic", f"set +m; {command}"],
+            _popen_args,
             text=True,
             cwd=session.cwd,
             env=bg_env,

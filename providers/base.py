@@ -72,6 +72,10 @@ class ProviderProfile:
     # Temperature: None = use caller's default, OMIT_TEMPERATURE = don't send
     fixed_temperature: Any = None
     default_max_tokens: int | None = None
+    # Provider-level context window default (tokens). Used as a fallback when
+    # model.context_length is not set in config.yaml and the model is not in
+    # the built-in registry. Model-specific config always takes precedence.
+    default_context_length: int | None = None
     default_aux_model: str = (
         ""  # cheap model for auxiliary tasks (compression, vision, etc.)
     )

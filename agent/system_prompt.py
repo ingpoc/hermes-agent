@@ -39,6 +39,7 @@ from agent.prompt_builder import (
     SKILLS_GUIDANCE,
     TOOL_USE_ENFORCEMENT_GUIDANCE,
     TOOL_USE_ENFORCEMENT_MODELS,
+    TRUTH_GROUNDING_DOCTRINE,
 )
 
 
@@ -96,6 +97,11 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
     if not _soul_loaded:
         # Fallback to hardcoded identity
         stable_parts.append(DEFAULT_AGENT_IDENTITY)
+
+    # Truth-grounding doctrine — structural enforcement for all models.
+    # Injected unconditionally so it survives context pressure regardless
+    # of whether model-specific guidance is active.
+    stable_parts.append(TRUTH_GROUNDING_DOCTRINE)
 
     # Pointer to the hermes-agent skill + docs for user questions about Hermes itself.
     stable_parts.append(HERMES_AGENT_HELP_GUIDANCE)
@@ -276,12 +282,15 @@ def build_system_prompt_parts(agent: Any, system_message: Optional[str] = None) 
 
     if agent._memory_store:
         if agent._memory_enabled:
-            mem_block = agent._memory_store.format_for_system_prompt("memory")
+            # Inject the compact index (one line per entry) instead of full memory
+            # text. Full entries are available via memory(action='read'). Reduces
+            # volatile tier token usage by ~70% while still surfacing what's stored.
+            mem_block = agent._memory_store.format_index_for_system_prompt("memory")
             if mem_block:
                 volatile_parts.append(mem_block)
         # USER.md is always included when enabled.
         if agent._user_profile_enabled:
-            user_block = agent._memory_store.format_for_system_prompt("user")
+            user_block = agent._memory_store.format_index_for_system_prompt("user")
             if user_block:
                 volatile_parts.append(user_block)
 

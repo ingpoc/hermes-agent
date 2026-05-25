@@ -207,80 +207,19 @@ def _fail_and_issue(text: str, detail: str, fix: str, issues: list[str]) -> None
     issues.append(fix)
 
 
-def _check_s6_supervision(issues: list[str]) -> None:
-    """Inside a container under our s6 /init, surface what s6 sees.
-
-    Runs as a counterpart to :func:`_check_gateway_service_linger` for
-    the systemd-on-host case. No-op everywhere except in the s6
-    container so host runs aren't cluttered with irrelevant output.
-
-    Reports:
-      - Whether the main-hermes and dashboard static services are up
-      - How many per-profile gateway slots are registered (via
-        ``S6ServiceManager.list_profile_gateways()``) and how many are
-        currently supervised as ``up``
-    """
-    try:
-        from hermes_cli.service_manager import (
-            S6ServiceManager,
-            detect_service_manager,
-        )
-    except Exception:
-        return
-
-    if detect_service_manager() != "s6":
-        return
-
-    _section("s6 Supervision")
-
-    mgr = S6ServiceManager()
-
-    # Static services. They live under /run/service/ via s6-rc symlinks,
-    # so the same s6-svstat probe works.
-    for static in ("main-hermes", "dashboard"):
-        if mgr.is_running(static):
-            check_ok(f"{static}: up")
-        else:
-            check_info(f"{static}: down (expected if not enabled via env)")
-
-    profiles = mgr.list_profile_gateways()
-    if not profiles:
-        check_info("No per-profile gateways registered yet — create one with `hermes profile create <name>`")
-        return
-
-    up_count = sum(1 for p in profiles if mgr.is_running(f"gateway-{p}"))
-    check_ok(
-        f"Per-profile gateways: {up_count}/{len(profiles)} supervised up"
-        + (f" ({', '.join(sorted(profiles))})" if len(profiles) <= 8 else "")
-    )
-
-
 def _check_gateway_service_linger(issues: list[str]) -> None:
-    """Warn when a systemd user gateway service will stop after logout.
-
-    Skipped inside a container running under s6 — the linger concept
-    (user-systemd surviving SSH logout) doesn't apply there, and the
-    s6 supervision state is surfaced separately by
-    ``_check_s6_supervision``.
-    """
+    """Warn when a systemd user gateway service will stop after logout."""
     try:
         from hermes_cli.gateway import (
             get_systemd_linger_status,
             get_systemd_unit_path,
             is_linux,
         )
-        from hermes_cli.service_manager import detect_service_manager
     except Exception as e:
         check_warn("Gateway service linger", f"(could not import gateway helpers: {e})")
         return
 
     if not is_linux():
-        return
-
-    # Inside a container under our s6 /init, _check_s6_supervision
-    # reports the live supervision state; the linger warning would be
-    # confusing here (no systemd, no logout, no "lingering" concept).
-    if detect_service_manager() == "s6":
         return
 
     unit_path = get_systemd_unit_path()
@@ -1045,7 +984,29 @@ def run_doctor(args):
             pass
 
     _check_gateway_service_linger(issues)
-    _check_s6_supervision(issues)
+
+    # Compaction analytics log
+    try:
+        from hermes_constants import get_compaction_log_path
+        _cpath = get_compaction_log_path()
+        if _cpath.exists():
+            import json as _json
+            _c_events = [_json.loads(ln) for ln in _cpath.read_text(encoding="utf-8").splitlines() if ln.strip()]
+            if _c_events:
+                _c_last = _c_events[-1]
+                _c_ts = (_c_last.get("timestamp") or "")[:19]
+                _c_pct = _c_last.get("reduction_pct", 0)
+                check_info(
+                    f"Compaction log: {len(_c_events)} event(s), "
+                    f"last at {_c_ts} ({_c_pct:.0f}% reduction, "
+                    f"trigger={_c_last.get('trigger', '?')})"
+                )
+            else:
+                check_info("Compaction log: exists but empty")
+        else:
+            check_info("Compaction log: none yet (~/.hermes/compaction.jsonl)")
+    except Exception as _cl_err:
+        check_warn("Compaction log check failed", f"({_cl_err})")
 
     if sys.platform != "win32":
         _section("Command Installation")
@@ -1123,6 +1084,32 @@ def run_doctor(args):
                     issues.append(f"Missing {_cmd_link_display}/hermes symlink — run 'hermes doctor --fix'")
 
     _section("External Tools")
+    # OS Sandbox
+    try:
+        from agent.sandbox import sandbox_status
+        _sb = sandbox_status()
+        if _sb["active"]:
+            _net = " + network blocked" if _sb["network_blocked"] else ""
+            check_ok(f"OS sandbox", f"({_sb['backend']}{_net})")
+        elif _sb.get("reason") == "HERMES_SANDBOX_DISABLED=1":
+            check_info("OS sandbox disabled (HERMES_SANDBOX_DISABLED=1)")
+        else:
+            check_warn("OS sandbox unavailable", f"({_sb.get('reason', 'no backend')})")
+            if sys.platform.startswith("linux"):
+                check_info("Install bubblewrap for network isolation: sudo apt install bubblewrap")
+    except Exception as _sb_err:
+        check_warn("OS sandbox check failed", f"({_sb_err})")
+
+    # Tool allowlist
+    try:
+        from hermes_constants import ALLOWED_TOOLS
+        if ALLOWED_TOOLS:
+            check_ok("Tool allowlist", f"({len(ALLOWED_TOOLS)} tool(s) permitted: {', '.join(sorted(ALLOWED_TOOLS))})")
+        else:
+            check_info("Tool allowlist: disabled (all tools allowed) — set HERMES_ALLOWED_TOOLS to restrict")
+    except Exception as _al_err:
+        check_warn("Tool allowlist check failed", f"({_al_err})")
+
     # Git
     if _safe_which("git"):
         check_ok("git")
@@ -1138,26 +1125,6 @@ def run_doctor(args):
     
     # Docker (optional)
     terminal_env = os.getenv("TERMINAL_ENV", "local")
-    try:
-        from hermes_constants import is_container as _is_container
-        running_in_container = _is_container()
-    except Exception:
-        running_in_container = False
-
-    if running_in_container:
-        # Inside our container the Docker terminal backend is not
-        # configured by default (Docker-in-Docker isn't set up); the
-        # local backend is the intended one. Skip the noisy "docker
-        # not found" warning. If the user has explicitly chosen
-        # TERMINAL_ENV=docker inside the container they likely mounted
-        # /var/run/docker.sock, so fall through to the normal check.
-        if terminal_env != "docker":
-            check_info(
-                "Running inside a container — using local terminal backend "
-                "(docker-in-docker is not configured by default)"
-            )
-            # Skip to next section; Docker isn't relevant here.
-            terminal_env = "local"
     if terminal_env == "docker":
         if _safe_which("docker"):
             # Check if docker daemon is running
@@ -1180,8 +1147,6 @@ def run_doctor(args):
         check_ok("docker", "(optional)")
     elif _is_termux():
         check_info("Docker backend is not available inside Termux (expected on Android)")
-    elif running_in_container:
-        pass  # already explained above
     else:
         check_warn("docker not found", "(optional)")
     

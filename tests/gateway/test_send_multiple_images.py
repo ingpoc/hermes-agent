@@ -344,7 +344,7 @@ class TestSlackMultiImage:
 # ---------------------------------------------------------------------------
 
 
-from plugins.platforms.mattermost.adapter import MattermostAdapter  # noqa: E402
+from gateway.platforms.mattermost import MattermostAdapter  # noqa: E402
 
 
 class TestMattermostMultiImage:

@@ -167,7 +167,10 @@ MEMORY_GUIDANCE = (
     "'Project uses pytest with xdist' ✓ — 'Run tests with pytest -n 4' ✗. "
     "Imperative phrasing gets re-read as a directive in later sessions and can "
     "cause repeated work or override the user's current request. Procedures and "
-    "workflows belong in skills, not memory."
+    "workflows belong in skills, not memory.\n"
+    "Entries older than HERMES_MEMORY_STALE_DAYS (default 30) are automatically "
+    "flagged [STALE — Nd] in your system prompt. Re-verify any stale entry "
+    "before citing it — the underlying fact may have changed."
 )
 
 SESSION_SEARCH_GUIDANCE = (
@@ -363,6 +366,23 @@ GOOGLE_MODEL_OPERATIONAL_GUIDANCE = (
     "to prevent CLI tools from hanging on prompts.\n"
     "- **Keep going:** Work autonomously until the task is fully resolved. "
     "Don't stop with a plan — execute it.\n"
+)
+
+# Truth-grounding doctrine — injected into the stable tier for ALL models.
+# Structural enforcement: prevents file-path hallucination, stale-memory
+# citation, and unverified API signature claims regardless of context pressure.
+TRUTH_GROUNDING_DOCTRINE = (
+    "## Truth-Grounding Rules\n\n"
+    "Before recommending any file path: verify it exists.\n"
+    "  → Run: terminal(command='ls <path>') or terminal(command='find . -name \"<filename>\"')\n\n"
+    "Before claiming a function or class exists: grep for it.\n"
+    "  → Run: terminal(command='grep -r \"def <name>\\|class <name>\" .')\n\n"
+    "Before quoting an API signature: fetch current documentation.\n"
+    "  → Use the docs_search tool or ctx7.\n\n"
+    "Before citing a memory entry: check its written date.\n"
+    "  → Entries flagged [STALE] are older than the staleness threshold — re-verify before citing.\n\n"
+    "If you cannot verify: say 'unverified — checking now' and check before answering.\n"
+    "Never fabricate a file path, function name, or API signature."
 )
 
 

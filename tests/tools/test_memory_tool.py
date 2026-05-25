@@ -102,7 +102,7 @@ class TestMemoryStoreAdd:
     def test_add_entry(self, store):
         result = store.add("memory", "Python 3.12 project")
         assert result["success"] is True
-        assert "Python 3.12 project" in result["entries"]
+        assert any("Python 3.12 project" in e for e in result["entries"])
 
     def test_add_to_user(self, store):
         result = store.add("user", "Name: Alice")
@@ -120,8 +120,8 @@ class TestMemoryStoreAdd:
         assert len(store.memory_entries) == 1  # Not duplicated
 
     def test_add_exceeding_limit_rejected(self, store):
-        # Fill up to near limit
-        store.add("memory", "x" * 490)
+        # Fill up to near limit (account for ~42-char [written: ...] timestamp prefix)
+        store.add("memory", "x" * 450)
         result = store.add("memory", "this will exceed the limit")
         assert result["success"] is False
         assert "exceed" in result["error"].lower()
@@ -194,8 +194,8 @@ class TestMemoryStorePersistence:
 
         store2 = MemoryStore()
         store2.load_from_disk()
-        assert "persistent fact" in store2.memory_entries
-        assert "Alice, developer" in store2.user_entries
+        assert any("persistent fact" in e for e in store2.memory_entries)
+        assert any("Alice, developer" in e for e in store2.user_entries)
 
     def test_deduplication_on_load(self, tmp_path, monkeypatch):
         monkeypatch.setattr("tools.memory_tool.get_memory_dir", lambda: tmp_path)
