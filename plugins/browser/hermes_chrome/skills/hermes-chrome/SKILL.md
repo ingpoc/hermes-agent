@@ -35,11 +35,11 @@ through a native host socket under `~/.hermes`.
 
 ## Prerequisites
 
-- Install the Hermes Chrome Bridge runtime into `~/.hermes`:
-  `plugins/browser/hermes_chrome/scripts/install_hermes_chrome_bridge.py --install-runtime`.
+- Install the Hermes Chrome Bridge runtime:
+  `~/.hermes/plugins/hermes_chrome/scripts/install_hermes_chrome_bridge.py --install-runtime`.
 - Load `~/.hermes/chrome-bridge/extension/` as an unpacked Chrome extension.
 - Install the native manifest after Chrome shows the extension id:
-  `plugins/browser/hermes_chrome/scripts/install_hermes_chrome_bridge.py --install-runtime --extension-id <id>`.
+  `~/.hermes/plugins/hermes_chrome/scripts/install_hermes_chrome_bridge.py --install-runtime --extension-id <id>`.
 - Reload the Hermes Chrome Bridge extension after installing the native
   manifest.
 

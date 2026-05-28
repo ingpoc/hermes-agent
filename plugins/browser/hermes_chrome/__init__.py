@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from plugins.browser.hermes_chrome.tools import (
+from .tools import (
     HERMES_CHROME_BROWSER_SCHEMA,
     _check_hermes_chrome_available,
     _handle_hermes_chrome_browser,
