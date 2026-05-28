@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Hermes Chrome Bridge</title>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{width:340px;min-height:200px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0a0a0f;color:#e4e4e7;overflow:hidden}
+    .header{padding:16px 18px 12px;border-bottom:1px solid rgba(255,255,255,0.06);display:flex;align-items:center;gap:10px}
+    .logo{width:28px;height:28px;background:linear-gradient(135deg,#6366f1,#8b5cf6);border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0}
+    .hdr{flex:1}
+    .hdr h1{font-size:13px;font-weight:600;color:#f4f4f5}
+    .hdr p{font-size:11px;color:#71717a;margin-top:1px}
+    .dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;position:relative}
+    .dot.ok{background:#22c55e;box-shadow:0 0 6px rgba(34,197,94,0.5)}
+    .dot.ok::after{content:'';position:absolute;inset:-3px;border-radius:50%;border:1px solid rgba(34,197,94,0.3);animation:pulse 2s ease-out infinite}
+    .dot.bad{background:#ef4444}
+    .dot.warn{background:#eab308}
+    @keyframes pulse{0%{transform:scale(1);opacity:1}100%{transform:scale(2);opacity:0}}
+    .body{padding:14px 18px}
+    .row{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+    .row:last-child{margin-bottom:0}
+    .lbl{font-size:11px;color:#71717a;font-weight:500;text-transform:uppercase;letter-spacing:.05em}
+    .val{font-size:12px;font-weight:600}
+    .val.ok{color:#22c55e}.val.bad{color:#ef4444}.val.warn{color:#eab308}
+    .section{padding:14px 18px;border-top:1px solid rgba(255,255,255,0.06)}
+    .section-title{font-size:11px;color:#71717a;font-weight:500;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px}
+    .card{background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:8px;padding:10px 12px}
+    .card-title{font-size:12px;font-weight:500;color:#e4e4e7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:4px}
+    .card-url{font-size:11px;color:#52525b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .empty{font-size:12px;color:#52525b;font-style:italic;padding:4px 0}
+    .mono{font-size:11px;font-family:'SF Mono','Fira Code',monospace;color:#a1a1aa}
+    .footer{padding:10px 18px;background:rgba(255,255,255,0.02);border-top:1px solid rgba(255,255,255,0.04);text-align:center}
+    .footer span{font-size:10px;color:#3f3f46}
+    .err{font-size:11px;color:#f87171;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.2);border-radius:6px;padding:8px 12px;margin:12px 18px 0;display:none}
+    .err.show{display:block}
+    .badge{display:inline-block;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:600;margin-left:4px}
+    .badge.ok{background:rgba(34,197,94,0.15);color:#22c55e}
+    .badge.bad{background:rgba(239,68,68,0.15);color:#ef4444}
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="logo">🦉</div>
+    <div class="hdr">
+      <h1>OWL · Hermes Chrome Bridge</h1>
+      <p id="sub">Loading…</p>
+    </div>
+    <div id="dot" class="dot warn"></div>
+  </div>
+  <div id="err" class="err"></div>
+  <div class="body">
+    <div class="row"><span class="lbl">Extension</span><span id="ext-status" class="val warn">—</span></div>
+    <div class="row"><span class="lbl">Content Script</span><span id="cs-status" class="val warn">—</span></div>
+  </div>
+  <div class="section">
+    <div class="section-title">Active Tab</div>
+    <div id="tab"><div class="empty">Loading…</div></div>
+  </div>
+  <div class="section">
+    <div class="row"><span class="lbl">Extension ID</span><span id="ext-id" class="mono">—</span></div>
+    <div class="row"><span class="lbl">Bridge Socket</span><span id="sock" class="mono">—</span></div>
+  </div>
+  <div class="footer"><span>hermes-chrome-bridge v0.1.0</span></div>
+  <script src="popup.js"></script>
+</body>
+</html>
