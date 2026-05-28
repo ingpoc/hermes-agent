@@ -1,0 +1,9 @@
+{
+  "name": "com.hermes.chrome_bridge",
+  "description": "Hermes Chrome Bridge native messaging host",
+  "path": "__REPLACE_WITH_NATIVE_HOST_PATH__",
+  "type": "stdio",
+  "allowed_origins": [
+    "chrome-extension://__REPLACE_WITH_EXTENSION_ID__/"
+  ]
+}

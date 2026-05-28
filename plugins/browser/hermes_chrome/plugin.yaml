@@ -1,0 +1,7 @@
+name: browser-hermes-chrome
+version: 0.1.0
+description: "Controls the user's Chrome profile through the Hermes Chrome extension and native host."
+author: Hermes Agent
+kind: backend
+provides_tools:
+  - hermes_chrome_browser
