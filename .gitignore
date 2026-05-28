@@ -47,6 +47,7 @@ agent-browser/
 *.pem
 privvy*
 images/
+!plugins/browser/hermes_chrome/extension/images/
 __pycache__/
 hermes_agent.egg-info/
 wandb/
